@@ -1,8 +1,30 @@
 # Jusoor — Sign Language Model Development
 
-A graduation project that develops bidirectional sign language translation models, bridging communication through machine learning. The repository contains two independent model implementations that evolved over the course of the project.
+Sign language is used by millions of people worldwide, yet real-time 
+translation tools remain rare and inaccessible. Jusoor addresses this 
+by building a bidirectional ASL translation system — converting live 
+signing to text and text back to animated signing — using a full 
+MediaPipe + deep learning pipeline.
+
+**This repository contains my individual contribution to the Jusoor 
+graduation project:** the complete AI/ML pipeline, from raw dataset 
+processing through model training to real-time WebSocket inference. 
+The backend API and frontend interface were developed separately by 
+teammates.
 
 ---
+## Results at a Glance
+
+| Model | Task | Accuracy |
+|---|---|---|
+| MLP (FirstModel) | Static ASL fingerspelling (29 classes) | ~99% |
+| Bi-LSTM (SecondModel) | Word-level ASL recognition (41 classes) | ~60% |
+
+> The 60% word-level accuracy reflects a genuine hard problem: small 
+> per-class video counts (~25 videos/class before augmentation), high 
+> inter-class similarity in ASL motion, and a constrained compute 
+> environment. The architecture is designed to scale with more data.
+
 
 ## Repository Structure
 

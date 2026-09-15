@@ -88,11 +88,7 @@ SecondModel/
 
 ### Dataset v3 — ASL Citizen Landmark Extraction
 
-Because the full ASL Citizen dataset exceeds local storage capacity, the landmark extraction for v3 was performed inside a **Kaggle notebook**:
-
-> 📓 **[ASL Citizen — MediaPipe Holistic Landmark Extraction](https://www.kaggle.com/code/abdalrhmanashqar/asl-citizen-holistic-landmark-extraction)**
-
-The pipeline:
+Because the full ASL Citizen dataset exceeds local storage capacity, the landmark extraction for v3 was performed inside a **Kaggle notebook**. The pipeline:
 
 1. Loads the ASL Citizen metadata splits (`train.csv`, `val.csv`, `test.csv`).
 2. Runs **MediaPipe Holistic** on each video, extracting landmarks frame-by-frame.
@@ -173,4 +169,3 @@ From `requirements.txt`:
 | `numpy` | 2.4.6 | Array operations |
 | `scipy` | 1.17.1 | Sequence resampling/interpolation |
 | `tensorflow` | 2.21.0 | Bi-LSTM model training & inference |
-
