@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ASL Hand Avatar — IK Driver</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e10;
+    --panel: #17171a;
+    --border: #2a2a2f;
+    --accent: #c8f060;
+    --accent2: #60d0f0;
+    --text: #e8e8ec;
+    --muted: #6a6a78;
+    --bone-color: #c8f060;
+  }
+
+ body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Syne', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Allow proper scaling on smaller heights */
+html, body {
+  height: 100%;
+}
+
+  header {
+  padding: 16px clamp(16px, 3vw, 36px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    z-index: 10;
+    height: 64px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .logo-dot {
+    width: 12px; height: 12px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.7); }
+  }
+
+  .status-bar {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    gap: 32px;
+  }
+
+  .status-item span {
+    color: var(--accent);
+  }
+
+  .main {
+  display: flex;
+  flex: 1;
+  min-height: 0; /* FIXES FLEX OVERFLOW BUG */
+}
+
+  /* ── Viewport ── */
+ #viewport {
+  flex: 1;
+  position: relative;
+  background: radial-gradient(ellipse at 40% 50%, #1a1f14 0%, #0e0e10 70%);
+  min-width: 0; /* prevents overflow bug */
+}
+  #three-canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+  }
+
+  .viewport-label {
+    position: absolute;
+    top: 20px; left: 28px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .drop-zone {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    pointer-events: none;
+  }
+
+  .drop-zone.hidden { display: none; }
+
+  .drop-icon {
+    width: 80px; height: 80px;
+    border: 2px dashed var(--border);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+  }
+
+  .drop-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .drop-sub {
+    font-size: 13px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .load-btn {
+    pointer-events: all;
+    margin-top: 10px;
+    padding: 13px 32px;
+    background: var(--accent);
+    color: #0e0e10;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .load-btn:hover { opacity: 0.85; }
+
+  #file-input { display: none; }
+
+  /* ── Side Panel ── */
+  .panel {
+    width: clamp(320px, 20vw, 420px); /* responsive width */
+    min-width: 300px;
+    max-width: 420px;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    height: calc(100vh - 64px); /* exact fit under header */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .panel-section {
+  padding: clamp(16px, 2vw, 24px) clamp(16px, 2vw, 28px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 18px;
+  }
+
+  /* Pose presets */
+  .pose-grid {
+    display: grid;
+    grid-template-columns:  repeat(auto-fit, minmax(60px, 1fr));
+    gap: 10px;
+  }
+
+  .pose-btn {
+    padding: 12px 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    letter-spacing: 0.05em;
+  }
+
+  .pose-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(200,240,96,0.05);
+  }
+
+  .pose-btn.active {
+    border-color: var(--accent);
+    background: rgba(200,240,96,0.1);
+    color: var(--accent);
+  }
+
+  /* Finger sliders */
+  .finger-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .finger-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    width: 56px;
+    flex-shrink: 0;
+  }
+
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(200,240,96,0.4);
+  }
+
+  .finger-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    width: 36px;
+    text-align: right;
+  }
+
+  /* Bone tree */
+  .bone-tree {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 16px;
+  }
+
+  .bone-tree .bone { color: var(--text); }
+  .bone-tree .ik   { color: var(--accent); }
+
+  /* Info box */
+  .info-box {
+    background: rgba(200,240,96,0.05);
+    border: 1px solid rgba(200,240,96,0.2);
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+
+  .info-box strong {
+    color: var(--accent);
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* Loading overlay */
+  #loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(14,14,16,0.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 20;
+    display: none;
+  }
+
+  .spinner {
+    width: 44px; height: 44px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .axis-hint {
+    position: absolute;
+    bottom: 20px;
+    left: 28px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .loading-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    ASL Avatar — Hand Rig Tester
+  </div>
+  <div class="status-bar">
+    <div class="status-item">MODEL <span id="model-status">none</span></div>
+    <div class="status-item">BONES <span id="bone-count">—</span></div>
+    <div class="status-item">MAPPED <span id="ik-status">—</span></div>
+    <div class="status-item">LIVE <span id="ws-status" style="color:#6a6a78">●  OFF</span></div>
+    <div class="status-item">LETTER <span id="ws-letter" style="color:#6a6a78">—</span></div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- 3D Viewport -->
+  <div id="viewport">
+    <div class="viewport-label">3D VIEWPORT · DRAG TO ORBIT · SCROLL TO ZOOM</div>
+
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-icon">🖐</div>
+      <div class="drop-title">Load your GLB hand model</div>
+      <div class="drop-sub">rigged_wooden_puppet_hand.glb</div>
+      <button class="load-btn" onclick="document.getElementById('file-input').click()">
+        Browse File
+      </button>
+      <input type="file" id="file-input" accept=".glb,.gltf" />
+    </div>
+
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div class="loading-text">Parsing rig…</div>
+    </div>
+
+    <div class="axis-hint">
+      X <span style="color:#f06060">━</span> &nbsp;
+      Y <span style="color:#60f090">━</span> &nbsp;
+      Z <span style="color:#6090f0">━</span>
+    </div>
+  </div>
+
+  <!-- Side Panel -->
+  <div class="panel">
+
+    <!-- Pose Presets -->
+    <div class="panel-section">
+      <div class="panel-title">ASL Letter Presets</div>
+      <div class="pose-grid">
+        <button class="pose-btn" onclick="applyPose('A')">A</button>
+        <button class="pose-btn" onclick="applyPose('B')">B</button>
+        <button class="pose-btn" onclick="applyPose('C')">C</button>
+        <button class="pose-btn" onclick="applyPose('D')">D</button>
+        <button class="pose-btn" onclick="applyPose('L')">L</button>
+        <button class="pose-btn" onclick="applyPose('V')">V</button>
+        <button class="pose-btn" onclick="applyPose('open')">Open</button>
+        <button class="pose-btn" onclick="applyPose('fist')">Fist</button>
+      </div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-title"> Text Input</div>
+        <input id="textInput" placeholder="Type word..." />
+        <button onclick="startText()">Play</button>
+    </div>
+
+    <!-- Manual Finger Control -->
+    <div class="panel-section">
+      <div class="panel-title">Manual Finger Curl</div>
+
+      <div class="finger-row">
+        <div class="finger-label">THUMB</div>
+        <input type="range" min="0" max="100" value="0" id="s-thumb" oninput="onSlider('thumb',this.value)"/>
+        <div class="finger-val" id="v-thumb">0°</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">INDEX</div>
+        <input type="range" min="0" max="100" value="0" id="s-index" oninput="onSlider('index',this.value)"/>
+        <div class="finger-val" id="v-index">0°</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">MIDDLE</div>
+        <input type="range" min="0" max="100" value="0" id="s-middle" oninput="onSlider('middle',this.value)"/>
+        <div class="finger-val" id="v-middle">0°</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">RING</div>
+        <input type="range" min="0" max="100" value="0" id="s-ring" oninput="onSlider('ring',this.value)"/>
+        <div class="finger-val" id="v-ring">0°</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">PINKY</div>
+        <input type="range" min="0" max="100" value="0" id="s-pinky" oninput="onSlider('pinky',this.value)"/>
+        <div class="finger-val" id="v-pinky">0°</div>
+      </div>
+    </div>
+
+    <!-- Curl Axis Picker -->
+    <div class="panel-section">
+      <div class="panel-title">Curl Axis — Find Inward Bend</div>
+      <div class="pose-grid">
+        <button class="pose-btn axis-btn active" id="axis-x1"  onclick="setCurlAxis('x', 1)">+X</button>
+        <button class="pose-btn axis-btn"        id="axis-x-1" onclick="setCurlAxis('x',-1)">−X</button>
+        <button class="pose-btn axis-btn"        id="axis-y1"  onclick="setCurlAxis('y', 1)">+Y</button>
+        <button class="pose-btn axis-btn"        id="axis-y-1" onclick="setCurlAxis('y',-1)">−Y</button>
+        <button class="pose-btn axis-btn"        id="axis-z1"  onclick="setCurlAxis('z', 1)">+Z</button>
+        <button class="pose-btn axis-btn"        id="axis-z-1" onclick="setCurlAxis('z',-1)">−Z</button>
+      </div>
+      <div style="margin-top:12px; font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); line-height:1.7">
+        Set INDEX to 100%, try each axis until it curls
+        <span style="color:var(--accent)">inward toward the palm</span>.
+        Then test the thumb separately — it may need a different axis.
+      </div>
+    </div>
+
+    <!-- Bone Map -->
+    <div class="panel-section">
+      <div class="panel-title">Bone → Landmark Map</div>
+      <div class="bone-tree">
+        <div><span class="bone">Thumb 1/2/3</span> ← LM 2–4</div>
+        <div><span class="bone">Index 1/2/3/4</span> ← LM 5–8</div>
+        <div><span class="bone">Middle 1/2/3/4</span> ← LM 9–12</div>
+        <div><span class="bone">Ring 1/2/3/4</span> ← LM 13–16</div>
+        <div><span class="bone">Pinky 1/2/3/4</span> ← LM 17–20</div>
+        <div><span class="bone">Wrist</span> ← LM 0</div>
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="panel-section">
+      <div class="info-box">
+        <strong>NEW MODEL</strong><br/>
+        21 bones, pure FK. 4 joints per finger, 3 for thumb.
+        Once the correct curl axis is confirmed, the picker
+        will be removed and the axis hardcoded.
+      </div>
+      <button class="load-btn" style="margin-top:14px; width:100%; font-size:12px; padding:10px"
+        onclick="dumpBoneNames()">🦴 Dump Live Bone Names</button>
+      <div id="bone-dump" style="display:none; margin-top:12px; font-family:'Courier New',monospace;
+        font-size:10px; color:#c8f060; background:#0e0e10; border-radius:6px; padding:12px;
+        line-height:1.9; white-space:pre; max-height:220px; overflow-y:auto; border:1px solid #2a2a2f"></div>
+      <button id="copy-dump-btn" style="display:none; margin-top:8px; width:100%; padding:8px;
+        background:transparent; border:1px solid #2a2a2f; border-radius:6px; color:#c8f060;
+        font-size:11px; font-weight:700; cursor:pointer" onclick="copyDump()">Copy to Clipboard</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- three.js r128 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ─────────────────────────────────────────────
+//  Scene setup
+// ─────────────────────────────────────────────
+const viewport = document.getElementById('viewport');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+viewport.appendChild(renderer.domElement);
+renderer.domElement.id = 'three-canvas';
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 100);
+camera.position.set(0, 0.15, 0.5);
+
+// Lighting
+const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambient);
+const key = new THREE.DirectionalLight(0xc8f060, 1.2);
+key.position.set(1, 2, 2);
+key.castShadow = true;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0x60d0f0, 0.5);
+fill.position.set(-2, 0, 1);
+scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffffff, 0.3);
+rim.position.set(0, -1, -2);
+scene.add(rim);
+
+// Grid
+const grid = new THREE.GridHelper(2, 20, 0x2a2a2f, 0x1e1e22);
+grid.position.y = -0.01;
+scene.add(grid);
+
+// Orbit controls (manual lightweight implementation)
+let isDragging = false, prevMouse = { x: 0, y: 0 };
+let spherical = { theta: 0.3, phi: 1.2, radius: 0.35 };
+
+function updateCamera() {
+  camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+  camera.position.y = spherical.radius * Math.cos(spherical.phi);
+  camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+  camera.lookAt(0, 0.12, 0);
+}
+updateCamera();
+
+renderer.domElement.addEventListener('mousedown', e => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const dx = e.clientX - prevMouse.x;
+  const dy = e.clientY - prevMouse.y;
+  spherical.theta -= dx * 0.005;
+  spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi + dy * 0.005));
+  prevMouse = { x: e.clientX, y: e.clientY };
+  updateCamera();
+});
+renderer.domElement.addEventListener('wheel', e => {
+  spherical.radius = Math.max(0.1, Math.min(2, spherical.radius + e.deltaY * 0.001));
+  updateCamera();
+});
+
+// Resize
+function resize() {
+  const w = viewport.clientWidth, h = viewport.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Render loop
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+animate();
+
+// ─────────────────────────────────────────────
+//  GLB Loader (inline, no import map needed)
+// ─────────────────────────────────────────────
+// We use a minimal GLTFLoader compatible with r128
+// loaded from CDN via dynamic script injection
+let GLTFLoader = null;
+
+function loadGLTFLoaderScript() {
+  return new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+    s.onload = () => { GLTFLoader = THREE.GLTFLoader; resolve(); };
+    document.head.appendChild(s);
+  });
+}
+
+// ─────────────────────────────────────────────
+//  Bone references
+// ─────────────────────────────────────────────
+let bones = {};
+let modelLoaded = false;
+
+const BONE_NAMES = {
+  // Wrist root
+  wrist:   'Bone_19',
+  // Thumb  (3 bones)
+  thumb1:  'Bone005_18', thumb2:  'Bone018_17', thumb3:  'Bone019_16',
+  // Index  (4 bones)
+  index1:  'Bone002_7',  index2:  'Bone008_6',  index3:  'Bone012_5',  index4:  'Bone014_4',
+  // Middle (4 bones)
+  middle1: 'Bone003_11', middle2: 'Bone009_10', middle3: 'Bone013_9',  middle4: 'Bone015_8',
+  // Ring   (4 bones)
+  ring1:   'Bone001_3',  ring2:   'Bone007_2',  ring3:   'Bone011_1',  ring4:   'Bone016_0',
+  // Pinky  (4 bones)
+  pinky1:  'Bone004_15', pinky2:  'Bone006_14', pinky3:  'Bone010_13', pinky4:  'Bone017_12',
+};
+
+function collectBones(object) {
+  bones = {};
+  let count = 0;
+  object.traverse(node => {
+    if (node.isBone || node.type === 'Bone') {
+      const key = Object.keys(BONE_NAMES).find(k => BONE_NAMES[k] === node.name);
+      if (key) bones[key] = node;
+      count++;
+    }
+  });
+  document.getElementById('bone-count').textContent = count;
+  const mapped = Object.keys(BONE_NAMES).filter(k => bones[k]).length;
+  document.getElementById('ik-status').textContent = mapped + '/' + Object.keys(BONE_NAMES).length;
+  return count;
+}
+
+// ─────────────────────────────────────────────
+//  File loading
+// ─────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  await loadModel(file);
+});
+
+async function loadModel(file) {
+  if (!GLTFLoader) await loadGLTFLoaderScript();
+
+  document.getElementById('loading-overlay').style.display = 'flex';
+
+  const url = URL.createObjectURL(file);
+  const loader = new THREE.GLTFLoader();
+
+  loader.load(url, gltf => {
+    // Remove previous model
+    scene.children
+      .filter(c => c.userData.isHand)
+      .forEach(c => scene.remove(c));
+
+    const model = gltf.scene;
+    model.userData.isHand = true;
+
+    // Auto-scale to fit
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const scale = 0.3 / maxDim;
+    model.scale.setScalar(scale);
+
+    // Place hand above grid
+    box.setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.x -= center.x;
+    model.position.z -= center.z;
+    // Lift so bottom of model sits on grid
+    const minY = box.min.y;
+    model.position.y -= minY;
+    model.position.y += 0.02;
+
+    scene.add(model);
+model.traverse(n => {
+       if (n.isMesh) {
+         n.material = n.material.clone(); // avoid modifying shared material
+         n.material.color.set(0xd4956a);
+         n.material.roughness = 0.8;
+         n.material.metalness = 0.0;
+  }
+});
+
+    collectBones(model);
+
+
+
+    modelLoaded = true;
+    document.getElementById('model-status').textContent = file.name.replace('.glb','');
+    document.getElementById('drop-zone').classList.add('hidden');
+    document.getElementById('loading-overlay').style.display = 'none';
+
+    URL.revokeObjectURL(url);
+
+    // Apply rest pose
+    applyPose('open');
+  }, undefined, err => {
+    console.error(err);
+    document.getElementById('loading-overlay').style.display = 'none';
+    alert('Failed to load model. Make sure it is a valid .glb file.');
+  });
+}
+
+// ─────────────────────────────────────────────
+//  Bone driving — FK, pure rotation
+//  This model has 4 bones per finger, 3 for thumb
+//  Axis TBD — use the picker in the panel to find
+//  which axis curls fingers inward toward palm
+// ─────────────────────────────────────────────
+
+let CURL_AXIS = 'x';
+let CURL_SIGN =  -1;
+
+function setFingerCurl(fingerPrefix, curl) {
+  const maxAngle = Math.PI * 0.55; // ~99° max, prevents clipping
+  const angle = CURL_SIGN * curl * maxAngle;
+
+  // const b1 = bones[fingerPrefix + '1'];
+  const b2 = bones[fingerPrefix + '2'];
+  const b3 = bones[fingerPrefix + '3'];
+  const b4 = bones[fingerPrefix + '4'];
+
+  [ b2, b3, b4].forEach(b => {
+    if (b) { b.rotation.x = 0; b.rotation.y = 0; b.rotation.z = 0; }
+  });
+
+  // Progressive curl across 4 joints
+  // if (b1) b1.rotation[CURL_AXIS] = angle * 0.4;
+  if (b2) b2.rotation[CURL_AXIS] = angle * 0.85;
+  if (b3) b3.rotation[CURL_AXIS] = angle * 0.75;
+  if (b4) b4.rotation[CURL_AXIS] = angle * 0.5;
+}
+
+function setThumbCurl(curl) {
+  // const b1 = bones['thumb1'];
+  const b2 = bones['thumb2'];
+  const b3 = bones['thumb3'];
+  const maxAngle = Math.PI * 0.45;
+  const angle = CURL_SIGN * curl * maxAngle;
+
+  [ b2, b3].forEach(b => {
+    if (b) { b.rotation.x = 0; b.rotation.y = 0; b.rotation.z = 0; }
+  });
+
+  // if (b1) b1.rotation[CURL_AXIS] = angle * 0.5;
+  if (b2) b2.rotation.z = angle * 0.9;
+  if (b3) b3.rotation.z = angle * 0.6;
+}
+
+window.setCurlAxis = function(axis, sign) {
+  CURL_AXIS = axis;
+  CURL_SIGN = sign;
+  ['thumb','index','middle','ring','pinky'].forEach(f => {
+    const sl = document.getElementById('s-' + f);
+    if (!sl) return;
+    if (f === 'thumb') setThumbCurl(sl.value / 100);
+    else setFingerCurl(f, sl.value / 100);
+  });
+  document.querySelectorAll('.axis-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('axis-' + axis + sign);
+  if (btn) btn.classList.add('active');
+};
+
+// ─────────────────────────────────────────────
+//  Pose presets  (curl values 0–1 per finger)
+//  order: [thumb, index, middle, ring, pinky]
+// ─────────────────────────────────────────────
+const POSES = {
+  open:  [0.0, 0.0, 0.0, 0.0, 0.0],
+  fist:  [0.9, 1.0, 1.0, 1.0, 1.0],
+  // ASL A — thumb alongside closed fist
+  A:     [0.6, 1.0, 1.0, 1.0, 1.0],
+  // ASL B — flat hand, thumb tucked
+  B:     [0.8, 0.0, 0.0, 0.0, 0.0],
+  // ASL C — curved open
+  C:     [0.4, 0.4, 0.4, 0.4, 0.4],
+  // ASL D — index up, others curled
+  D:     [0.5, 0.0, 1.0, 1.0, 1.0],
+  // ASL L — index up, thumb out
+  L:     [0.0, 0.0, 1.0, 1.0, 1.0],
+  // ASL V — index + middle up
+  V:     [0.8, 0.0, 0.0, 1.0, 1.0],
+};
+
+function applyPose(name) {
+  if (!modelLoaded) return;
+  const p = POSES[name];
+  if (!p) return;
+
+  setThumbCurl(p[0]);
+  setFingerCurl('index',  p[1]);
+  setFingerCurl('middle', p[2]);
+  setFingerCurl('ring',   p[3]);
+  setFingerCurl('pinky',  p[4]);
+
+  // Sync sliders
+  ['thumb','index','middle','ring','pinky'].forEach((f, i) => {
+    const v = Math.round(p[i] * 100);
+    const sl = document.getElementById('s-' + f);
+    const vl = document.getElementById('v-' + f);
+    if (sl) sl.value = v;
+    const maxDeg = f === 'thumb' ? 90 : 99;
+    if (vl) vl.textContent = Math.round(p[i] * maxDeg) + '°';
+  });
+
+  // Highlight active button
+  document.querySelectorAll('.pose-btn').forEach(b => b.classList.remove('active'));
+  const btn = [...document.querySelectorAll('.pose-btn')].find(b => b.textContent === name);
+  if (btn) btn.classList.add('active');
+}
+
+// Dumps all live bone names as three.js sees them — use to verify BONE_NAMES mapping
+let dumpText = '';
+function dumpBoneNames() {
+  const lines = [];
+  scene.traverse(node => {
+    if (node.isBone || node.type === 'Bone') {
+      const matched = Object.entries(BONE_NAMES).find(([k,v]) => v === node.name);
+      const tag = matched ? `✓ ${matched[0]}` : '✗ UNMAPPED';
+      lines.push(`${tag.padEnd(20)} ${node.name}`);
+    }
+  });
+  dumpText = lines.join('\n');
+  const el = document.getElementById('bone-dump');
+  el.textContent = dumpText || 'No bones found — load a model first.';
+  el.style.display = 'block';
+  document.getElementById('copy-dump-btn').style.display = 'block';
+}
+
+function copyDump() {
+  navigator.clipboard.writeText(dumpText).then(() => {
+    const btn = document.getElementById('copy-dump-btn');
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = 'Copy to Clipboard', 2000);
+  });
+}
+
+function onSlider(finger, value) {
+  if (!modelLoaded) return;
+  const curl = value / 100;
+  const maxDeg = finger === 'thumb' ? 90 : 99;
+  document.getElementById('v-' + finger).textContent = Math.round(curl * maxDeg) + '°';
+  if (finger === 'thumb') setThumbCurl(curl);
+  else setFingerCurl(finger, curl);
+  document.querySelectorAll('.pose-btn').forEach(b => b.classList.remove('active'));
+}
+
+
+
+async function playText(text) {
+  text = text.toUpperCase();
+
+  for (let char of text) {
+    if (!POSES[char]) continue;
+
+    applyPose(char);
+
+    // delay between letters
+    await new Promise(r => setTimeout(r, 600));
+  }
+}
+function startText() {
+  const text = document.getElementById('textInput').value;
+  playText(text);
+}
+</script>
+
+</body>
+</html>

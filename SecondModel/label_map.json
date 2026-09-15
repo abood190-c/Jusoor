@@ -1,0 +1,22 @@
+{
+    "before": 0,
+    "candy": 1,
+    "color": 2,
+    "computer": 3,
+    "drink": 4,
+    "finish": 5,
+    "forget": 6,
+    "hearing": 7,
+    "hot": 8,
+    "like": 9,
+    "mother": 10,
+    "no": 11,
+    "now": 12,
+    "orange": 13,
+    "paper": 14,
+    "thin": 15,
+    "white": 16,
+    "who": 17,
+    "wrong": 18,
+    "yes": 19
+}

@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ASL Hand Avatar — IK Driver</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e10;
+    --panel: #17171a;
+    --border: #2a2a2f;
+    --accent: #c8f060;
+    --accent2: #60d0f0;
+    --text: #e8e8ec;
+    --muted: #6a6a78;
+    --bone-color: #c8f060;
+  }
+
+ body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Syne', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Allow proper scaling on smaller heights */
+html, body {
+  height: 100%;
+}
+
+  header {
+  padding: 16px clamp(16px, 3vw, 36px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    z-index: 10;
+    height: 64px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .logo-dot {
+    width: 12px; height: 12px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.7); }
+  }
+
+  .status-bar {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    gap: 32px;
+  }
+
+  .status-item span {
+    color: var(--accent);
+  }
+
+  .main {
+  display: flex;
+  flex: 1;
+  min-height: 0; /* FIXES FLEX OVERFLOW BUG */
+}
+
+  /* ── Viewport ── */
+ #viewport {
+  flex: 1;
+  position: relative;
+  background: radial-gradient(ellipse at 40% 50%, #1a1f14 0%, #0e0e10 70%);
+  min-width: 0; /* prevents overflow bug */
+}
+  #three-canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+  }
+
+  .viewport-label {
+    position: absolute;
+    top: 20px; left: 28px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .drop-zone {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    pointer-events: none;
+  }
+
+  .drop-zone.hidden { display: none; }
+
+  .drop-icon {
+    width: 80px; height: 80px;
+    border: 2px dashed var(--border);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+  }
+
+  .drop-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .drop-sub {
+    font-size: 13px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .load-btn {
+    pointer-events: all;
+    margin-top: 10px;
+    padding: 13px 32px;
+    background: var(--accent);
+    color: #0e0e10;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .load-btn:hover { opacity: 0.85; }
+
+  #file-input { display: none; }
+
+  /* ── Side Panel ── */
+  .panel {
+    width: clamp(320px, 20vw, 420px); /* responsive width */
+    min-width: 300px;
+    max-width: 420px;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    height: calc(100vh - 64px); /* exact fit under header */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .panel-section {
+  padding: clamp(16px, 2vw, 24px) clamp(16px, 2vw, 28px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 18px;
+  }
+
+  /* Pose presets */
+  .pose-grid {
+    display: grid;
+    grid-template-columns:  repeat(auto-fit, minmax(60px, 1fr));
+    gap: 10px;
+  }
+
+  .pose-btn {
+    padding: 12px 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    letter-spacing: 0.05em;
+  }
+
+  .pose-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(200,240,96,0.05);
+  }
+
+  .pose-btn.active {
+    border-color: var(--accent);
+    background: rgba(200,240,96,0.1);
+    color: var(--accent);
+  }
+
+  /* Finger sliders */
+  .finger-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .finger-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    width: 56px;
+    flex-shrink: 0;
+  }
+
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(200,240,96,0.4);
+  }
+
+  .finger-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    width: 36px;
+    text-align: right;
+  }
+
+  /* Bone tree */
+  .bone-tree {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 16px;
+  }
+
+  .bone-tree .bone { color: var(--text); }
+  .bone-tree .ik   { color: var(--accent); }
+
+.pose-btn.playing {
+  background: rgba(200, 240, 96, 0.25) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+  box-shadow: 0 0 12px rgba(200, 240, 96, 0.4);
+}
+
+
+  /* Info box */
+  .info-box {
+    background: rgba(200,240,96,0.05);
+    border: 1px solid rgba(200,240,96,0.2);
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+
+  .info-box strong {
+    color: var(--accent);
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* Loading overlay */
+  #loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(14,14,16,0.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 20;
+    display: none;
+  }
+
+  .spinner {
+    width: 44px; height: 44px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .axis-hint {
+    position: absolute;
+    bottom: 20px;
+    left: 28px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .loading-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    ASL Avatar — Hand Rig Tester
+  </div>
+  <div class="status-bar">
+    <div class="status-item">MODEL <span id="model-status">none</span></div>
+    <div class="status-item">BONES <span id="bone-count">—</span></div>
+    <div class="status-item">MAPPED <span id="ik-status">—</span></div>
+    <div class="status-item">LIVE <span id="ws-status" style="color:#6a6a78">●  OFF</span></div>
+    <div class="status-item">LETTER <span id="ws-letter" style="color:#6a6a78">—</span></div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- 3D Viewport -->
+  <div id="viewport">
+    <div class="viewport-label">3D VIEWPORT · DRAG TO ORBIT · SCROLL TO ZOOM</div>
+
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-icon">🖐</div>
+      <div class="drop-title">Load your GLB hand model</div>
+      <div class="drop-sub">rigged_wooden_puppet_hand.glb</div>
+      <button class="load-btn" onclick="document.getElementById('file-input').click()">
+        Browse File
+      </button>
+      <input type="file" id="file-input" accept=".glb,.gltf" />
+    </div>
+
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div class="loading-text">Parsing rig…</div>
+    </div>
+
+    <div class="axis-hint">
+      X <span style="color:#f06060">━</span> &nbsp;
+      Y <span style="color:#60f090">━</span> &nbsp;
+      Z <span style="color:#6090f0">━</span>
+    </div>
+  </div>
+
+  <!-- Side Panel -->
+  <div class="panel">
+
+    <!-- Text → Sign Input -->
+    <div class="panel-section">
+      <div class="panel-title">Text → Sign</div>
+      <div style="display:flex; gap:8px; align-items:center">
+        <input id="textInput" placeholder="Type a word…"
+          style="flex:1; background:#0e0e10; border:1px solid var(--border);
+                 border-radius:6px; padding:10px 12px; color:var(--text);
+                 font-family:'Space Mono',monospace; font-size:12px; outline:none;"
+          onkeydown="if(event.key==='Enter') startText()"
+        />
+        <button onclick="startText()" class="load-btn"
+          style="margin:0; padding:10px 16px; font-size:12px; white-space:nowrap">
+          ▶ Play
+        </button>
+      </div>
+      <div style="margin-top:10px; font-family:'Space Mono',monospace; font-size:10px;
+                  color:var(--muted); line-height:1.6">
+        Supports A–Z. Letters not in the alphabet are skipped.<br>
+        Press <span style="color:var(--accent)">ENTER</span> or click Play.
+      </div>
+    </div>
+
+    <!-- ASL Letter Presets — full alphabet -->
+    <div class="panel-section">
+      <div class="panel-title">ASL Letter Presets</div>
+      <div class="pose-grid">
+        <button class="pose-btn" onclick="applyPose('A')">A</button>
+        <button class="pose-btn" onclick="applyPose('B')">B</button>
+        <button class="pose-btn" onclick="applyPose('C')">C</button>
+        <button class="pose-btn" onclick="applyPose('D')">D</button>
+        <button class="pose-btn" onclick="applyPose('E')">E</button>
+        <button class="pose-btn" onclick="applyPose('F')">F</button>
+        <button class="pose-btn" onclick="applyPose('G')">G</button>
+        <button class="pose-btn" onclick="applyPose('H')">H</button>
+        <button class="pose-btn" onclick="applyPose('I')">I</button>
+        <button class="pose-btn" onclick="applyPose('K')">K</button>
+        <button class="pose-btn" onclick="applyPose('L')">L</button>
+        <button class="pose-btn" onclick="applyPose('M')">M</button>
+        <button class="pose-btn" onclick="applyPose('N')">N</button>
+        <button class="pose-btn" onclick="applyPose('O')">O</button>
+        <button class="pose-btn" onclick="applyPose('P')">P</button>
+        <button class="pose-btn" onclick="applyPose('Q')">Q</button>
+        <button class="pose-btn" onclick="applyPose('R')">R</button>
+        <button class="pose-btn" onclick="applyPose('S')">S</button>
+        <button class="pose-btn" onclick="applyPose('T')">T</button>
+        <button class="pose-btn" onclick="applyPose('U')">U</button>
+        <button class="pose-btn" onclick="applyPose('V')">V</button>
+        <button class="pose-btn" onclick="applyPose('W')">W</button>
+        <button class="pose-btn" onclick="applyPose('X')">X</button>
+        <button class="pose-btn" onclick="applyPose('Y')">Y</button>
+        <button class="pose-btn" onclick="applyPose('Z')">Z</button>
+        <button class="pose-btn" onclick="applyPose('open')">✋</button>
+        <button class="pose-btn" onclick="applyPose('fist')">✊</button>
+      </div>
+    </div>
+
+    <!-- Manual Finger Curl -->
+    <div class="panel-section">
+      <div class="panel-title">Manual Finger Curl</div>
+      <div class="finger-row">
+        <div class="finger-label">THUMB</div>
+        <input type="range" min="0" max="100" value="0" id="s-thumb" oninput="onSlider('thumb',this.value)"/>
+        <div class="finger-val" id="v-thumb">0°</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">INDEX</div>
+        <input type="range" min="0" max="100" value="0" id="s-index" oninput="onSlider('index',this.value)"/>
+        <div class="finger-val" id="v-index">0°</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">MIDDLE</div>
+        <input type="range" min="0" max="100" value="0" id="s-middle" oninput="onSlider('middle',this.value)"/>
+        <div class="finger-val" id="v-middle">0°</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">RING</div>
+        <input type="range" min="0" max="100" value="0" id="s-ring" oninput="onSlider('ring',this.value)"/>
+        <div class="finger-val" id="v-ring">0°</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">PINKY</div>
+        <input type="range" min="0" max="100" value="0" id="s-pinky" oninput="onSlider('pinky',this.value)"/>
+        <div class="finger-val" id="v-pinky">0°</div>
+      </div>
+    </div>
+
+     <!-- Manual Finger Abduction (Sideways) - NEW -->
+    <div class="panel-section">
+      <div class="panel-title">Manual Finger Abduction (Sideways)</div>
+      <div class="finger-row">
+        <div class="finger-label">THUMB</div>
+        <input type="range" min="-100" max="100" value="0" id="a-thumb" oninput="onAbduct('thumb',this.value)"/>
+        <div class="finger-val" id="av-thumb">0</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">INDEX</div>
+        <input type="range" min="-100" max="100" value="0" id="a-index" oninput="onAbduct('index',this.value)"/>
+        <div class="finger-val" id="av-index">0</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">MIDDLE</div>
+        <input type="range" min="-100" max="100" value="0" id="a-middle" oninput="onAbduct('middle',this.value)"/>
+        <div class="finger-val" id="av-middle">0</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">RING</div>
+        <input type="range" min="-100" max="100" value="0" id="a-ring" oninput="onAbduct('ring',this.value)"/>
+        <div class="finger-val" id="av-ring">0</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">PINKY</div>
+        <input type="range" min="-100" max="100" value="0" id="a-pinky" oninput="onAbduct('pinky',this.value)"/>
+        <div class="finger-val" id="av-pinky">0</div>
+      </div>
+    </div>
+
+
+            <!-- Wrist Rotation Sliders -->
+    <div class="panel-section">
+      <div class="panel-title">Wrist Rotation</div>
+      <div class="finger-row">
+        <div class="finger-label">PITCH (X)</div>
+        <input type="range" min="-100" max="100" value="0" id="w-pitch" oninput="onWristSlider('x', this.value)"/>
+        <div class="finger-val" id="wv-x">0°</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">YAW (Y)</div>
+        <input type="range" min="-100" max="100" value="0" id="w-yaw" oninput="onWristSlider('y', this.value)"/>
+        <div class="finger-val" id="wv-y">0°</div>
+      </div>
+      <div class="finger-row">
+        <div class="finger-label">ROLL (Z)</div>
+        <input type="range" min="-100" max="100" value="0" id="w-roll" oninput="onWristSlider('z', this.value)"/>
+        <div class="finger-val" id="wv-z">0°</div>
+      </div>
+      <button onclick="resetWrist()" class="load-btn" style="margin-top:8px; padding:8px 16px; font-size:12px;">
+        Reset Wrist
+      </button>
+    </div>
+
+    <!-- Info -->
+    <div class="panel-section">
+      <div class="info-box">
+        <strong>POSE ENGINE v2</strong><br/>
+        Full alphabet A–Z with curl, spread, and wrist tilt per letter.
+        Use the letter buttons to validate poses, then tune values
+        directly in the POSES table in the source.
+      </div>
+    </div>
+
+  </div>
+</div>
+      <div id="bone-dump" style="display:none; margin-top:12px; font-family:'Courier New',monospace; "></div>
+<!-- three.js r128 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ─────────────────────────────────────────────
+//  Scene setup
+// ─────────────────────────────────────────────
+const viewport = document.getElementById('viewport');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+viewport.appendChild(renderer.domElement);
+renderer.domElement.id = 'three-canvas';
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 100);
+camera.position.set(0, 0.15, 0.5);
+
+// Lighting
+const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambient);
+const key = new THREE.DirectionalLight(0xc8f060, 1.2);
+key.position.set(1, 2, 2);
+key.castShadow = true;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0x60d0f0, 0.5);
+fill.position.set(-2, 0, 1);
+scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffffff, 0.3);
+rim.position.set(0, -1, -2);
+scene.add(rim);
+
+// Grid
+const grid = new THREE.GridHelper(2, 20, 0x2a2a2f, 0x1e1e22);
+grid.position.y = -0.01;
+scene.add(grid);
+
+// Orbit controls (manual lightweight implementation)
+let isDragging = false, prevMouse = { x: 0, y: 0 };
+let spherical = { theta: 0.3, phi: 1.2, radius: 0.35 };
+
+//  NEW: Rest pose storage
+let isTransitioning = false;
+let transitionStartTime = 0;
+const transitionDuration = 320;
+
+function updateCamera() {
+  camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+  camera.position.y = spherical.radius * Math.cos(spherical.phi);
+  camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+  camera.lookAt(0, 0.12, 0);
+}
+updateCamera();
+
+renderer.domElement.addEventListener('mousedown', e => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const dx = e.clientX - prevMouse.x;
+  const dy = e.clientY - prevMouse.y;
+  spherical.theta -= dx * 0.005;
+  spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi + dy * 0.005));
+  prevMouse = { x: e.clientX, y: e.clientY };
+  updateCamera();
+});
+renderer.domElement.addEventListener('wheel', e => {
+  spherical.radius = Math.max(0.1, Math.min(2, spherical.radius + e.deltaY * 0.001));
+  updateCamera();
+});
+
+// Resize
+function resize() {
+  const w = viewport.clientWidth, h = viewport.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+
+// Render loop
+// Simple render loop (no more conflicting smoothing logic)
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+animate();
+// ─────────────────────────────────────────────
+//  GLB Loader (inline, no import map needed)
+// ─────────────────────────────────────────────
+// We use a minimal GLTFLoader compatible with r128
+// loaded from CDN via dynamic script injection
+let GLTFLoader = null;
+
+function loadGLTFLoaderScript() {
+  return new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+    s.onload = () => { GLTFLoader = THREE.GLTFLoader; resolve(); };
+    document.head.appendChild(s);
+  });
+}
+
+// ─────────────────────────────────────────────
+//  Bone references
+// ─────────────────────────────────────────────
+let bones = {};
+let modelLoaded = false;
+
+const BONE_NAMES = {
+  // Wrist root
+  wrist:   'Bone_19',
+  // Thumb  (3 bones)
+  thumb1:  'Bone005_18', thumb2:  'Bone018_17', thumb3:  'Bone019_16',
+  // Index  (4 bones)
+  index1:  'Bone002_7',  index2:  'Bone008_6',  index3:  'Bone012_5',  index4:  'Bone014_4',
+  // Middle (4 bones)
+  middle1: 'Bone003_11', middle2: 'Bone009_10', middle3: 'Bone013_9',  middle4: 'Bone015_8',
+  // Ring   (4 bones)
+  ring1:   'Bone001_3',  ring2:   'Bone007_2',  ring3:   'Bone011_1',  ring4:   'Bone016_0',
+  // Pinky  (4 bones)
+  pinky1:  'Bone004_15', pinky2:  'Bone006_14', pinky3:  'Bone010_13', pinky4:  'Bone017_12',
+};
+
+let currentPose = {
+  curl: [0,0,0,0,0],
+  spread: [0,0,0,0,0],
+  abduct: [0,0,0,0,0],
+  wrist: {x:0, y:0, z:0}
+};
+
+function collectBones(object) {
+  bones = {};
+  let count = 0;
+  object.traverse(node => {
+    if (node.isBone || node.type === 'Bone') {
+      const key = Object.keys(BONE_NAMES).find(k => BONE_NAMES[k] === node.name);
+      if (key) bones[key] = node;
+      count++;
+    }
+  });
+  document.getElementById('bone-count').textContent = count;
+  const mapped = Object.keys(BONE_NAMES).filter(k => bones[k]).length;
+  document.getElementById('ik-status').textContent = mapped + '/' + Object.keys(BONE_NAMES).length;
+  return count;
+}
+
+
+
+// ─────────────────────────────────────────────
+//  File loading
+// ─────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  await loadModel(file);
+});
+
+async function loadModel(file) {
+  if (!GLTFLoader) await loadGLTFLoaderScript();
+
+  document.getElementById('loading-overlay').style.display = 'flex';
+
+  const url = URL.createObjectURL(file);
+  const loader = new THREE.GLTFLoader();
+
+  loader.load(url, gltf => {
+    // Remove previous model
+    scene.children
+      .filter(c => c.userData.isHand)
+      .forEach(c => scene.remove(c));
+
+    const model = gltf.scene;
+    model.userData.isHand = true;
+
+    // Auto-scale to fit
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const scale = 0.3 / maxDim;
+    model.scale.setScalar(scale);
+
+    // Place hand above grid
+    box.setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.x -= center.x;
+    model.position.z -= center.z;
+    // Lift so bottom of model sits on grid
+    const minY = box.min.y;
+    model.position.y -= minY;
+    model.position.y += 0.02;
+  
+    model.rotation.y = Math.PI;    
+
+    scene.add(model);
+    collectBones(model);
+ 
+ 
+    function captureRestPose() {
+      restMetacarpalRot = {};
+      Object.keys(FINGER_CHAINS).forEach(f => {
+        const base = bones[FINGER_CHAINS[f][0]];
+        if (base) {
+          restMetacarpalRot[f] = {
+            x: base.rotation.x,
+            y: base.rotation.y,
+            z: base.rotation.z
+          };
+        }
+      });
+    }
+
+    modelLoaded = true;
+model.traverse(n => {
+       if (n.isMesh) {
+         n.material = n.material.clone(); // avoid modifying shared material
+         n.material.color.set(0xa15c33);
+         n.material.roughness = 0.8;
+         n.material.metalness = 0.0;
+  }
+});
+
+    document.getElementById('model-status').textContent = file.name.replace('.glb','');
+    document.getElementById('drop-zone').classList.add('hidden');
+    document.getElementById('loading-overlay').style.display = 'none';
+
+    URL.revokeObjectURL(url);
+
+    captureRestPose();
+
+    // Apply rest pose
+    applyPose('open');
+  }, undefined, err => {
+    console.error(err);
+    document.getElementById('loading-overlay').style.display = 'none';
+    alert('Failed to load model. Make sure it is a valid .glb file.');
+  });
+}
+
+// ─────────────────────────────────────────────
+//  Bone driving
+//  Confirmed axes for this rig:
+//    Fingers → X, sign -1 (inward)
+//    Thumb   → Z, sign -1 (inward)
+// ─────────────────────────────────────────────
+
+// finger chain arrays — used by spread and curl
+// b1 = metacarpal (skip for curl), b2 = first active joint
+const FINGER_CHAINS = {
+  thumb:  ['thumb1',  'thumb2',  'thumb3'],
+  index:  ['index1',  'index2',  'index3',  'index4'],
+  middle: ['middle1', 'middle2', 'middle3', 'middle4'],
+  ring:   ['ring1',   'ring2',   'ring3',   'ring4'],
+  pinky:  ['pinky1',  'pinky2',  'pinky3',  'pinky4'],
+};
+
+function setFingerCurl(fingerPrefix, curl) {
+  const chain = FINGER_CHAINS[fingerPrefix];
+  if (!chain) return;
+
+  const maxAngle = Math.PI * 0.55;
+  const angle = -curl * maxAngle;
+
+  // Skip metacarpal completely
+  for (let i = 1; i < chain.length; i++) {
+    const b = bones[chain[i]];
+    if (b) {
+      b.rotation.set(0, 0, 0);           // clean reset
+      b.rotation.x = angle * [0.85, 0.75, 0.5][i-1];
+    }
+  }
+}
+
+function setThumbCurl(curl) {
+  const chain = FINGER_CHAINS.thumb;
+  const maxAngle = Math.PI * 0.45;
+  const angle = -curl * maxAngle;
+
+  for (let i = 1; i < chain.length; i++) {
+    const b = bones[chain[i]];
+    if (b) b.rotation.set(0, 0, 0);
+  }
+
+  const b2 = bones[chain[1]];
+  const b3 = bones[chain[2]];
+  if (b2) {
+    b2.rotation.z = angle * 0.7;
+    b2.rotation.y = curl * 0.25;   // slight abduction
+  }
+  if (b3) b3.rotation.z = angle * 1.0;
+}
+// ─────────────────────────────────────────────
+//  NEW: Finger Abduction (sideways on first joint)
+// ─────────────────────────────────────────────
+function setFingerAbduct(fingerPrefix, val) {
+  const chain = FINGER_CHAINS[fingerPrefix];
+  if (!chain) return;
+  const joint = bones[chain[1]]; // first real finger bone (after metacarpal)
+  if (!joint) return;
+
+  const amount = (val / 100) * 0.55; // tune strength if needed
+  joint.rotation.z = amount;
+}
+
+function onAbduct(finger, value) {
+  if (!modelLoaded) return;
+  document.getElementById('av-' + finger).textContent = value;
+  setFingerAbduct(finger, parseFloat(value));
+  document.querySelectorAll('.pose-btn').forEach(b => b.classList.remove('active'));
+}
+
+// Spread sign per finger — ensures positive spread value always means "outward"
+const SPREAD_SIGN = { thumb: 1, index: 1, middle: 1, ring: -1, pinky: -1 };
+
+// Spread = side movement, applied to the metacarpal (chain[0])
+function setFingerSpread(fingerPrefix, val) {
+  const chain = FINGER_CHAINS[fingerPrefix];
+  if (!chain) return;
+  const base = bones[chain[0]];
+  if (!base || !restMetacarpalRot[fingerPrefix]) return;
+
+  const sign = SPREAD_SIGN[fingerPrefix] ?? 1;
+  const rest = restMetacarpalRot[fingerPrefix];
+
+  base.rotation.y = rest.y + (val * sign * 0.8);   // 0.8 = spread strength (tune if needed)
+}
+
+// Fake wrist rotation — tilts all metacarpals together
+// Called AFTER curl/spread so it adds on top
+function setHandRotation(x, y, z) {
+  Object.keys(FINGER_CHAINS).forEach(f => {
+    const base = bones[FINGER_CHAINS[f][0]];
+    if (!base) return;
+    base.rotation.x += x;
+    base.rotation.y += y;
+    base.rotation.z += z;
+  });
+}
+
+function resetHandRotation() {
+  Object.keys(FINGER_CHAINS).forEach(f => {
+    const base = bones[FINGER_CHAINS[f][0]];
+    if (!base || !restMetacarpalRot[f]) return;
+    const rest = restMetacarpalRot[f];
+
+    base.rotation.x = rest.x;   // only reset wrist tilt
+    base.rotation.z = rest.z;
+    // y is left alone — spread will add to it
+  });
+}
+
+// Highlight current letter during playback
+function highlightLetter(letter) {
+  document.querySelectorAll('.pose-btn').forEach(btn => {
+    btn.classList.remove('playing');
+  });
+  const btn = [...document.querySelectorAll('.pose-btn')].find(b => b.textContent === letter);
+  if (btn) btn.classList.add('playing');
+}
+
+// ─────────────────────────────────────────────
+//  POSES — {curl, spread, wrist} per letter
+//  curl:   [thumb, index, middle, ring, pinky] 0–1
+//  spread: [thumb, index, middle, ring, pinky] negative = toward thumb
+//  wrist:  {x, y, z} added to all metacarpal bases
+// ─────────────────────────────────────────────
+const POSES = {
+  open: {
+    curl:   [0.0, 0.0, 0.0, 0.0, 0.0],
+    spread: [0.0, 0.08, 0.0, -0.06, 0.12],
+    wrist:  {x: 0, y: 0, z: 0}
+  },
+  fist: {
+    curl:   [0.85, 1.0, 1.0, 1.0, 1.0],
+    spread: [0.0, 0.0, 0.0, 0.0, 0.0],
+    wrist:  {x: 0, y: 0, z: 0}
+  },
+
+     // ── ASL Letters ── Thumb improved + H/K/U/R refined
+  A: { curl: [0.65, 1.0, 1.0, 1.0, 1.0], spread: [0.28, 0.0, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],     wrist: {x: 0, y: 0, z: 0} },
+  B: { curl: [0.75, 0.05, 0.05, 0.05, 0.05], spread: [-0.15, -0.05, -0.02, 0.03, 0.09], abduct: [0, 0, 0, 0, 0], wrist: {x: 0, y: 0, z: 0} },
+  C: { curl: [0.48, 0.55, 0.55, 0.55, 0.55], spread: [0.0, 0.12, 0.05, -0.05, -0.12], abduct: [0, 0, 0, 0, 0], wrist: {x: 0.2, y: 0.35, z: 0} },
+  D: { curl: [0.58, 0.05, 0.95, 0.95, 0.95], spread: [0.22, 0.0, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],   wrist: {x: 0, y: 0, z: 0} },
+  E: { curl: [0.88, 0.78, 0.78, 0.78, 0.78], spread: [0.35, 0.04, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],    wrist: {x: 0, y: 0, z: 0} },
+  F: { curl: [0.68, 0.72, 0.15, 0.12, 0.10], spread: [0.15, 0.08, 0.13, 0.07, 0.0], abduct: [0, 0, 0, 0, 0], wrist: {x: 0, y: 0, z: 0} },
+  G: { curl: [0.72, 0.05, 0.95, 0.95, 0.95], spread: [0.35, -0.32, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],   wrist: {x: 0, y: -0.45, z: 0} },
+  H: { curl: [0.85, 0.05, 0.05, 0.95, 0.95], spread: [0.38, -0.12, 0.08, 0.0, 0.0], abduct: [0, -25, 18, 0, 0], wrist: {x: 0, y: -0.45, z: 0} },
+  I: { curl: [0.82, 1.0, 1.0, 1.0, 0.05],   spread: [-0.48, 0.0, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],    wrist: {x: 0, y: 0, z: 0} },
+  K: { curl: [0.52, 0.05, 0.05, 0.95, 0.95], spread: [0.35, 0.18, -0.13, 0.0, 0.0], abduct: [0, 12, -15, 0, 0], wrist: {x: 0, y: 0, z: 0} },
+  L: { curl: [0.15, 0.05, 0.95, 0.95, 0.95], spread: [0.42, 0.0, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],     wrist: {x: 0, y: 0, z: 0} },
+  M: { curl: [0.98, 0.72, 0.68, 0.68, 0.95], spread: [0.25, -0.04, -0.04, 0.0, 0.0], abduct: [0, 0, 0, 0, 0], wrist: {x: 0.25, y: 0, z: 0} },
+  N: { curl: [0.98, 0.75, 0.70, 0.95, 0.95], spread: [0.25, -0.04, -0.04, 0.0, 0.0], abduct: [0, 0, 0, 0, 0], wrist: {x: 0.25, y: 0, z: 0} },
+  O: { curl: [0.62, 0.70, 0.70, 0.70, 0.70], spread: [0.18, 0.10, 0.02, -0.08, -0.15], abduct: [0, 0, 0, 0, 0], wrist: {x: 0.15, y: 0.25, z: 0} },
+  P: { curl: [0.48, 0.05, 0.05, 0.95, 0.95], spread: [0.28, 0.12, -0.10, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],  wrist: {x: 0.55, y: -0.25, z: 0} },
+  Q: { curl: [0.28, 0.10, 0.95, 0.95, 0.95], spread: [0.0, 0.0, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],      wrist: {x: 0.60, y: -0.35, z: 0} },
+  R: { curl: [0.80, 0.05, 0.05, 0.95, 0.95], spread: [0.38, -0.15, 0.18, 0.0, 0.0], abduct: [0, -35, 28, 0, 0], wrist: {x: 0, y: 0, z: 0} },
+  S: { curl: [0.94, 1.0, 1.0, 1.0, 1.0],    spread: [0.42, 0.0, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],     wrist: {x: 0, y: 0, z: 0} },
+  T: { curl: [0.55, 0.92, 1.0, 1.0, 1.0],   spread: [0.35, 0.0, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],     wrist: {x: 0, y: 0, z: 0} },
+  U: { curl: [0.8, 0.05, 0.05, 0.95, 0.95], spread: [0.0, -0.06, 0.05, 0.0, 0.0], abduct: [0, -12, 10, 0, 0], wrist: {x: 0, y: 0, z: 0} },
+  V: { curl: [0.8, 0.05, 0.05, 0.95, 0.95], spread: [0.0, 0.26, -0.24, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],    wrist: {x: 0, y: 0, z: 0} },
+  W: { curl: [0.8, 0.05, 0.05, 0.05, 0.95], spread: [0.0, 0.17, 0.02, -0.17, 0.0], abduct: [0, 0, 0, 0, 0],   wrist: {x: 0, y: 0, z: 0} },
+  X: { curl: [0.85, 0.45, 0.98, 0.98, 0.98], spread: [0.28, 0.0, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],    wrist: {x: 0, y: 0, z: 0} },
+  Y: { curl: [0.28, 1.0, 1.0, 1.0, 0.05],   spread: [0.42, 0.0, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],     wrist: {x: 0, y: 0, z: 0} },
+  Z: { curl: [0.85, 0.05, 0.95, 0.95, 0.95], spread: [-0.65, 0.0, 0.0, 0.0, 0.0], abduct: [0, 0, 0, 0, 0],    wrist: {x: 0, y: 0, z: 0.22} }};
+
+function lerp(a, b, t) {
+  return a + (b - a) * Math.max(0, Math.min(1, t));
+}
+
+
+
+
+
+async function smoothApplyPose(name) {
+  if (!modelLoaded || !POSES[name]) return;
+
+  const target = POSES[name];
+  const startCurl   = [...currentPose.curl];
+  const startSpread = [...currentPose.spread];
+  const startAbduct = [...currentPose.abduct];
+  const startWrist  = {...currentPose.wrist};
+
+  isTransitioning = true;
+  transitionStartTime = performance.now();
+
+  while (isTransitioning) {
+    const elapsed = performance.now() - transitionStartTime;
+    let t = elapsed / transitionDuration;
+    if (t >= 1) {
+      t = 1;
+      isTransitioning = false;
+    }
+
+    // Interpolate
+    currentPose.curl   = startCurl.map((v, i) => lerp(v, target.curl[i] || 0, t));
+    currentPose.spread = startSpread.map((v, i) => lerp(v, target.spread[i] || 0, t));
+    currentPose.abduct = startAbduct.map((v, i) => lerp(v, target.abduct[i] || 0, t));
+    currentPose.wrist.x = lerp(startWrist.x, target.wrist?.x || 0, t);
+    currentPose.wrist.y = lerp(startWrist.y, target.wrist?.y || 0, t);
+    currentPose.wrist.z = lerp(startWrist.z, target.wrist?.z || 0, t);
+
+    applyPoseDirect(currentPose);
+
+    if (t < 1) {
+      await new Promise(r => setTimeout(r, 16)); // ~60fps
+    }
+  }
+
+  // Final snap
+  currentPose = JSON.parse(JSON.stringify(target));
+  applyPoseDirect(currentPose);
+}
+
+
+
+function applyPoseDirect(pose) {
+  const fingers = ['thumb','index','middle','ring','pinky'];
+
+  resetHandRotation();
+
+  // Curl
+  setThumbCurl(pose.curl[0]);
+  setFingerCurl('index',  pose.curl[1]);
+  setFingerCurl('middle', pose.curl[2]);
+  setFingerCurl('ring',   pose.curl[3]);
+  setFingerCurl('pinky',  pose.curl[4]);
+
+  // Spread
+  fingers.forEach((f, i) => setFingerSpread(f, pose.spread[i]));
+
+  // Abduction
+  fingers.forEach((f, i) => setFingerAbduct(f, pose.abduct[i]));
+
+  // Wrist
+  if (pose.wrist) {
+    setHandRotation(pose.wrist.x, pose.wrist.y, pose.wrist.z);
+  }
+
+  // Sync all sliders
+  fingers.forEach((f, i) => {
+    const sl = document.getElementById('s-' + f);
+    const vl = document.getElementById('v-' + f);
+    const aSl = document.getElementById('a-' + f);
+    const aVl = document.getElementById('av-' + f);
+
+    if (sl) sl.value = Math.round(pose.curl[i] * 100);
+    if (vl) vl.textContent = Math.round(pose.curl[i] * (f === 'thumb' ? 90 : 99)) + '°';
+
+    if (aSl) aSl.value = Math.round(pose.abduct[i]);
+    if (aVl) aVl.textContent = Math.round(pose.abduct[i]);
+  });
+}
+
+
+function onWristSlider(axis, value) {
+  if (!modelLoaded) return;
+  const deg = parseFloat(value);
+  const valEl = document.getElementById('wv-' + axis);
+  if (valEl) valEl.textContent = deg + '°';
+  
+  // Apply to hand
+  resetHandRotation();
+  setHandRotation(
+    axis === 'x' ? deg * 0.015 : 0,
+    axis === 'y' ? deg * 0.015 : 0,
+    axis === 'z' ? deg * 0.015 : 0
+  );
+}
+
+function resetWrist() {
+  ['x','y','z'].forEach(axis => {
+    const slider = document.getElementById('w-' + axis);
+    const valEl = document.getElementById('wv-' + axis);
+    if (slider) slider.value = 0;
+    if (valEl) valEl.textContent = '0°';
+  });
+  
+  resetHandRotation();
+  // Re-apply current pose wrist if any
+  if (currentPose && currentPose.wrist) {
+    setHandRotation(currentPose.wrist.x, currentPose.wrist.y, currentPose.wrist.z);
+  }
+}
+
+// Update applyPose to use smooth version
+function applyPose(name) {
+  smoothApplyPose(name);
+
+  // Highlight button
+  document.querySelectorAll('.pose-btn').forEach(b => b.classList.remove('active'));
+  const btn = [...document.querySelectorAll('.pose-btn')].find(b => b.textContent === name || b.textContent === name.toUpperCase());
+  if (btn) btn.classList.add('active');
+}
+
+function onSlider(finger, value) {
+  if (!modelLoaded) return;
+  const curl = value / 100;
+  const maxDeg = finger === 'thumb' ? 90 : 99;
+  document.getElementById('v-' + finger).textContent = Math.round(curl * maxDeg) + '°';
+  if (finger === 'thumb') setThumbCurl(curl);
+  else setFingerCurl(finger, curl);
+  document.querySelectorAll('.pose-btn').forEach(b => b.classList.remove('active'));
+}
+
+async function playText(text) {
+  text = text.toUpperCase().replace(/[^A-Z]/g, ''); // clean input
+  if (!text) return;
+
+  for (let char of text) {
+    if (!POSES[char]) continue;
+    
+    highlightLetter(char);
+    applyPose(char);                    // uses smooth transition
+    await new Promise(r => setTimeout(r, 700)); // timing for readability
+  }
+
+  // Clear highlight after finished
+  setTimeout(() => {
+    document.querySelectorAll('.pose-btn').forEach(btn => btn.classList.remove('playing'));
+  }, 800);
+}
+
+function startText() {
+  const input = document.getElementById('textInput');
+  if (!input || !input.value.trim()) return;
+  playText(input.value.trim());
+}
+
+</script>
+
+</body>
+</html>
